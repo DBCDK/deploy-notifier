@@ -6,6 +6,7 @@ import argparse
 import collections
 import concurrent.futures
 import datetime
+import sys
 import typing
 
 import kubernetes
@@ -75,6 +76,14 @@ def main():
     for n in args.namespace:
         futures.append(executor.submit(kube.watch_for_changes, n))
     concurrent.futures.wait(futures)
+    error_happened = False
+    for f in futures:
+        error = f.exception()
+        if error is not None:
+            error_happened = True
+            print("An error happened: {}".format(error))
+    if error_happened:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
