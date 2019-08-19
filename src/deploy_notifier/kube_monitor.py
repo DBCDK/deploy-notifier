@@ -3,25 +3,33 @@
 # https://github.com/kubernetes-client/python
 
 import argparse
+import collections
 import concurrent.futures
 import datetime
 import typing
 
 import kubernetes
+import slack
 
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--kubeconfig")
+    parser.add_argument("--slack-token", required=True)
+    parser.add_argument("--slack-channel", required=True)
     parser.add_argument("namespace", nargs="+")
     return parser.parse_args()
 
+SlackInfo = collections.namedtuple("SlackInfo", ["token", "channel"])
+
 class Kubernetes(object):
-    def __init__(self, config_file: typing.Optional[str] = None):
+    def __init__(self, slack_info: SlackInfo, config_file: typing.Optional[str] = None):
         if config_file is None:
             kubernetes.config.load_incluster_config()
         else:
             kubernetes.config.load_kube_config(config_file=config_file)
         self.apps = kubernetes.client.AppsV1Api()
+        self.slack_info = slack_info
+        self.slack_client = slack.WebClient(token=slack_info.token)
 
     def watch_for_changes(self, namespace: str):
         self.watch_for_deployment_changes(namespace)
@@ -44,11 +52,19 @@ class Kubernetes(object):
                 if name in events and (datetime.datetime.now() - events[name]) < datetime.timedelta(seconds=wait):
                     continue
                 events[name] = datetime.datetime.now()
-                print(namespace, kube_object.spec.template.spec.containers[0].image, event["type"])
+                s = "{} {} {}".format(namespace,
+                    kube_object.spec.template.spec.containers[0].image,
+                    event["type"])
+                print(s)
+                notify_slack(self.slack_client, self.slack_info.channel, s)
+
+def notify_slack(slack_client, channel: str, text: str):
+    slack_client.chat_postMessage(channel=channel, text=text)
 
 def main():
     args = setup_args()
-    kube = Kubernetes(args.kubeconfig)
+    slack_info = SlackInfo(args.slack_token, args.slack_channel)
+    kube = Kubernetes(slack_info, args.kubeconfig)
     # multiprocessing doesn't work very well here because the kube object
     # cannot be shared between processes because of it's ssl connection
     # and having different kube objects for each process results in an error
