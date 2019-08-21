@@ -6,10 +6,12 @@ import argparse
 import collections
 import concurrent.futures
 import datetime
+import logging
 import sys
 import typing
 
 import kubernetes
+import pyutils
 import slack
 
 def setup_args():
@@ -19,6 +21,16 @@ def setup_args():
     parser.add_argument("--slack-channel", required=True)
     parser.add_argument("namespace", nargs="+")
     return parser.parse_args()
+
+def setup_logging():
+    logger = logging.getLogger()
+    handler = logging.StreamHandler()
+    handler.setFormatter(pyutils.JSONFormatter())
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    return logger
+
+logger = setup_logging()
 
 SlackInfo = collections.namedtuple("SlackInfo", ["token", "channel"])
 
@@ -36,7 +48,7 @@ class Kubernetes(object):
         self.watch_for_deployment_changes(namespace)
 
     def watch_for_deployment_changes(self, namespace: str, wait: int = 5):
-        print("Watching namespace {}".format(namespace))
+        logger.info("Watching namespace {}".format(namespace))
         events = {}
         watch = kubernetes.watch.Watch()
         items = self.apps.list_namespaced_deployment(namespace)
@@ -56,7 +68,7 @@ class Kubernetes(object):
                 s = "{} {} {}".format(namespace,
                     kube_object.spec.template.spec.containers[0].image,
                     event["type"])
-                print(s)
+                logger.info(s)
                 notify_slack(self.slack_client, self.slack_info.channel, s)
 
 def notify_slack(slack_client, channel: str, text: str):
@@ -81,7 +93,7 @@ def main():
         error = f.exception()
         if error is not None:
             error_happened = True
-            print("An error happened: {}".format(error))
+            logger.error("An error happened: {}".format(error))
     if error_happened:
         sys.exit(1)
 
