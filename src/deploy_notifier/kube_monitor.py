@@ -7,6 +7,7 @@ import collections
 import concurrent.futures
 import datetime
 import logging
+import os
 import sys
 import typing
 
@@ -42,7 +43,12 @@ class Kubernetes(object):
             kubernetes.config.load_kube_config(config_file=config_file)
         self.apps = kubernetes.client.AppsV1Api()
         self.slack_info = slack_info
-        self.slack_client = slack.WebClient(token=slack_info.token)
+        # slack only supports http proxies
+        if os.getenv("http_proxy") is not None:
+            self.slack_client = slack.WebClient(token=slack_info.token,
+                proxy=os.getenv("http_proxy"))
+        else:
+            self.slack_client = slack.WebClient(token=slack_info.token)
 
     def watch_for_changes(self, namespace: str):
         self.watch_for_deployment_changes(namespace)
