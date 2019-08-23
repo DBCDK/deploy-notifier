@@ -5,7 +5,6 @@
 import argparse
 import collections
 import concurrent.futures
-import datetime
 import logging
 import os
 import sys
@@ -34,6 +33,7 @@ def setup_logging():
 logger = setup_logging()
 
 SlackInfo = collections.namedtuple("SlackInfo", ["token", "channel"])
+Event = collections.namedtuple("Event", ["type", "object"])
 
 class Kubernetes(object):
     def __init__(self, slack_info: SlackInfo, config_file: typing.Optional[str] = None):
@@ -64,13 +64,19 @@ class Kubernetes(object):
             kube_object = event["object"]
             if kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
+                # the status object contains information on different
+                # update transitions and number of ready replicas, etc.,
+                # so it isn't used when comparing different deployment versions
+                kube_object.status = None
+                kube_object.metadata.resource_version = None
+                kube_object.metadata.managed_fields = None
                 # This condition checks how long it has been since a change
                 # was observed for a particular deployment. This is to avoid
                 # repporting all the individual stages a dployment goes
                 # through when it's modified by a user.
-                if name in events and (datetime.datetime.now() - events[name]) < datetime.timedelta(seconds=wait):
+                if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
                     continue
-                events[name] = datetime.datetime.now()
+                events[name] = Event(event["type"], kube_object)
                 s = "{} {} {}".format(namespace,
                     kube_object.spec.template.spec.containers[0].image,
                     event["type"])
