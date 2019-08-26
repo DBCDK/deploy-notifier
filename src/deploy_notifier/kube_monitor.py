@@ -68,8 +68,7 @@ class Kubernetes(object):
                 # update transitions and number of ready replicas, etc.,
                 # so it isn't used when comparing different deployment versions
                 kube_object.status = None
-                kube_object.metadata.resource_version = None
-                kube_object.metadata.managed_fields = None
+                kube_object.metadata = None
                 # This condition checks how long it has been since a change
                 # was observed for a particular deployment. This is to avoid
                 # repporting all the individual stages a dployment goes
