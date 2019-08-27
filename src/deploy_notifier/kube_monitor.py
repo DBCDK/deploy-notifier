@@ -62,7 +62,8 @@ class Kubernetes(object):
         for event in watch.stream(self.apps.list_namespaced_deployment,
                 namespace, resource_version=resource_version):
             kube_object = event["object"]
-            if kube_object.status.replicas == kube_object.spec.replicas:
+            if kube_object.status is not None and kube_object.spec is not None \
+                    and kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
                 # the status object contains information on different
                 # update transitions and number of ready replicas, etc.,
