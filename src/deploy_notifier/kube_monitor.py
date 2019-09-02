@@ -5,13 +5,16 @@
 import argparse
 import collections
 import concurrent.futures
+import io
 import logging
 import os
+import pickle
 import sys
 import typing
 
 import kubernetes
 import pyutils
+import requests
 import slack
 
 def setup_args():
@@ -19,6 +22,7 @@ def setup_args():
     parser.add_argument("-c", "--kubeconfig")
     parser.add_argument("--slack-token", required=True)
     parser.add_argument("--slack-channel", required=True)
+    parser.add_argument("--artifactory-login", help="artifactory login in user:password format")
     parser.add_argument("namespace", nargs="+")
     return parser.parse_args()
 
@@ -34,9 +38,12 @@ logger = setup_logging()
 
 SlackInfo = collections.namedtuple("SlackInfo", ["token", "channel"])
 Event = collections.namedtuple("Event", ["type", "object"])
+ArtifactoryLogin = collections.namedtuple("ArtifactoryLogin", ["user", "password"])
 
 class Kubernetes(object):
-    def __init__(self, slack_info: SlackInfo, config_file: typing.Optional[str] = None):
+    def __init__(self, slack_info: SlackInfo,
+            config_file: typing.Optional[str] = None,
+            artifactory_login: typing.Optional[str] = None):
         if config_file is None:
             kubernetes.config.load_incluster_config()
         else:
@@ -49,13 +56,23 @@ class Kubernetes(object):
                 proxy=os.getenv("http_proxy"))
         else:
             self.slack_client = slack.WebClient(token=slack_info.token)
+        self.artifactory_login = None
+        self.artifactory_url = "https://artifactory.dbc.dk/artifactory/docker-xp/deploy-monitor"
+        if artifactory_login is not None:
+            parts = artifactory_login.split(":")
+            if len(parts) != 2:
+                logger.warning(
+                    "Artifactory login har wrong format. Split resulted in parts: {}"
+                    .format(parts))
+            else:
+                self.artifactory_login = ArtifactoryLogin(parts[0], parts[1])
 
     def watch_for_changes(self, namespace: str):
         self.watch_for_deployment_changes(namespace)
 
     def watch_for_deployment_changes(self, namespace: str, wait: int = 5):
         logger.info("Watching namespace {}".format(namespace))
-        events = {}
+        events = self.get_events_file_from_artifactory(namespace)
         watch = kubernetes.watch.Watch()
         items = self.apps.list_namespaced_deployment(namespace)
         resource_version = items.metadata.resource_version
@@ -77,11 +94,36 @@ class Kubernetes(object):
                 if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
                     continue
                 events[name] = Event(event["type"], kube_object)
-                s = "{} {} {}".format(namespace,
-                    kube_object.spec.template.spec.containers[0].image,
-                    event["type"])
-                logger.info(s)
-                notify_slack(self.slack_client, self.slack_info.channel, s)
+                if self.artifactory_login is not None:
+                    self.upload_events_to_artifactory(namespace, events)
+                action = "deployed to" if event["type"] != "DELETED" else "deleted from"
+                image = kube_object.spec.template.spec.containers[0].image
+                msg = f"{name} {action} {namespace}\nImage: {image}"
+                logger.info(msg)
+                notify_slack(self.slack_client, self.slack_info.channel, msg)
+
+    def get_events_file_from_artifactory(self, namespace: str) -> dict:
+        if self.artifactory_login is not None:
+            logger.info("getting events from artifactory")
+            filename = f"deployment-events-{namespace}.pickle"
+            url = f"{self.artifactory_url}/{filename}"
+            response = requests.get(url, auth=(self.artifactory_login.user,
+                self.artifactory_login.password))
+            if response.status_code == 200:
+                return pickle.load(io.BytesIO(response.content))
+        return {}
+
+    def upload_events_to_artifactory(self, namespace: str, events: dict) -> None:
+        filename = f"deployment-events-{namespace}.pickle"
+        url = f"{self.artifactory_url}/{filename}"
+        fp = io.BytesIO()
+        pickle.dump(events, fp)
+        fp.seek(0)
+        response = requests.put(url, auth=(self.artifactory_login.user,
+            self.artifactory_login.password), data=fp)
+        if response.status_code != 201:
+            logger.error("Error uploading events to artifactory: {} - {}",
+                r.status_code, r.reason)
 
 def notify_slack(slack_client, channel: str, text: str):
     slack_client.chat_postMessage(channel=channel, text=text)
@@ -89,7 +131,7 @@ def notify_slack(slack_client, channel: str, text: str):
 def main():
     args = setup_args()
     slack_info = SlackInfo(args.slack_token, args.slack_channel)
-    kube = Kubernetes(slack_info, args.kubeconfig)
+    kube = Kubernetes(slack_info, args.kubeconfig, args.artifactory_login)
     # multiprocessing doesn't work very well here because the kube object
     # cannot be shared between processes because of it's ssl connection
     # and having different kube objects for each process results in an error
