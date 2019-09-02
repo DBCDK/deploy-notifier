@@ -40,6 +40,8 @@ SlackInfo = collections.namedtuple("SlackInfo", ["token", "channel"])
 Event = collections.namedtuple("Event", ["type", "object"])
 ArtifactoryLogin = collections.namedtuple("ArtifactoryLogin", ["user", "password"])
 
+OWN_NAMESPACE = os.getenv("OWN_NAMESPACE", "default-namespace")
+
 class Kubernetes(object):
     def __init__(self, slack_info: SlackInfo,
             config_file: typing.Optional[str] = None,
@@ -105,7 +107,7 @@ class Kubernetes(object):
     def get_events_file_from_artifactory(self, namespace: str) -> dict:
         if self.artifactory_login is not None:
             logger.info("getting events from artifactory")
-            filename = f"deployment-events-{namespace}.pickle"
+            filename = f"deployment-events-{OWN_NAMESPACE}-{namespace}.pickle"
             url = f"{self.artifactory_url}/{filename}"
             response = requests.get(url, auth=(self.artifactory_login.user,
                 self.artifactory_login.password))
@@ -114,7 +116,7 @@ class Kubernetes(object):
         return {}
 
     def upload_events_to_artifactory(self, namespace: str, events: dict) -> None:
-        filename = f"deployment-events-{namespace}.pickle"
+        filename = f"deployment-events-{OWN_NAMESPACE}-{namespace}.pickle"
         url = f"{self.artifactory_url}/{filename}"
         fp = io.BytesIO()
         pickle.dump(events, fp)
