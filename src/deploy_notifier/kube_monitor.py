@@ -84,6 +84,9 @@ class Kubernetes(object):
             if kube_object.status is not None and kube_object.spec is not None \
                     and kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
+                team = None
+                if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
+                    team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
                 # the status object contains information on different
                 # update transitions and number of ready replicas, etc.,
                 # so it isn't used when comparing different deployment versions
@@ -101,6 +104,8 @@ class Kubernetes(object):
                 action = "deployed to" if event["type"] != "DELETED" else "deleted from"
                 image = kube_object.spec.template.spec.containers[0].image
                 msg = f"{name} {action} {namespace}\nImage: {image}"
+                if team is not None:
+                    msg = f"{msg}\nTeam: {team}"
                 logger.info(msg)
                 notify_slack(self.slack_client, self.slack_info.channel, msg)
 
