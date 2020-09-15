@@ -12,9 +12,7 @@ COPY setup.py setup.py
 COPY src src
 COPY docker/start.sh start.sh
 
-RUN pip install -U pip && \
-	/get_wheel_urls pyutils | xargs -L1 pip install && \
-	pip install .
+RUN pip install -U pip && pip install .
 
 CMD ["./start.sh"]
 
