@@ -1,4 +1,4 @@
-FROM docker.dbc.dk/dbc-python3
+FROM docker-dbc.artifacts.dbccloud.dk/dbc-python3
 
 ENV NAMESPACES "namespaces-not-set"
 ENV SLACK_TOKEN "slack-token-not-set"
