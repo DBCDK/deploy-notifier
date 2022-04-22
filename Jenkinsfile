@@ -87,7 +87,7 @@ pipeline {
 			}
 			steps {
 				sh "set-new-version deploy-notifier-1-0.yml ${env.GITLAB_PRIVATE_TOKEN} ai/deploy-notifier-secrets ${env.DOCKER_TAG} -b staging"
-				build job: "ai/deploy-notifier-deploy/staging", wait: true
+				build job: "ai/deploy-notifier/deploy-notifier-deploy/staging", wait: true
 			}
 		}
 		stage("update prod version number") {
@@ -103,7 +103,7 @@ pipeline {
 			}
 			steps {
 				sh "set-new-version deploy-notifier-1-0.yml ${env.GITLAB_PRIVATE_TOKEN} ai/deploy-notifier-secrets ${env.DOCKER_TAG} -b prod"
-				build job: "ai/deploy-notifier-deploy/prod", wait: true
+				build job: "ai/deploy-notifier/deploy-notifier-deploy/prod", wait: true
 			}
 		}
 
