@@ -5,14 +5,18 @@ ENV SLACK_TOKEN "slack-token-not-set"
 ENV SLACK_CHANNEL "slack-channel-not-set"
 ENV KUBE_CONFIG ""
 
-RUN mkdir kube-monitor
-WORKDIR kube-monitor
+RUN useradd -m python
+
+USER python
+WORKDIR /home/python
+
+ENV PATH=/home/python/.local/bin:$PATH
 
 COPY setup.py setup.py
 COPY src src
 COPY docker/start.sh start.sh
 
-RUN pip install -U pip && pip install .
+RUN pip install --user .
 
 CMD ["./start.sh"]
 
