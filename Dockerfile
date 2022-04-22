@@ -1,5 +1,7 @@
 FROM docker-dbc.artifacts.dbccloud.dk/dbc-python3
 
+RUN apt update && apt install -y gcc g++ build-essential python3-dev
+
 ENV NAMESPACES "namespaces-not-set"
 ENV SLACK_TOKEN "slack-token-not-set"
 ENV SLACK_CHANNEL "slack-channel-not-set"

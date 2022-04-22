@@ -13,7 +13,7 @@ import sys
 import typing
 
 import kubernetes
-import pyutils
+import dbc_pyutils
 import requests
 import slack
 
@@ -29,7 +29,7 @@ def setup_args():
 def setup_logging():
     logger = logging.getLogger()
     handler = logging.StreamHandler()
-    handler.setFormatter(pyutils.JSONFormatter())
+    handler.setFormatter(dbc_pyutils.JSONFormatter())
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     return logger
