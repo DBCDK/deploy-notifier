@@ -7,7 +7,7 @@ setup(name="deploy-notifier",
     package_dir={"": "src"},
     packages=["deploy_notifier"],
     description="Bot which notifies of new deployments",
-    install_requires=["kubernetes", "requests", "slackclient"],
+    install_requires=["kubernetes", "requests", "slackclient", "pyutils"],
     entry_points = {
         "console_scripts": [
             "kube-monitor = deploy_notifier.kube_monitor:main",
