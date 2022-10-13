@@ -14,11 +14,12 @@ WORKDIR /home/python
 
 ENV PATH=/home/python/.local/bin:$PATH
 
-COPY setup.py setup.py
-COPY src src
-COPY docker/start.sh start.sh
+COPY --chown=python setup.py setup.py
+COPY --chown=python src src
+COPY --chown=python docker/start.sh start.sh
 
-RUN pip install --user .
+RUN pip install --user pip && \
+    pip install --user .
 
 CMD ["./start.sh"]
 
