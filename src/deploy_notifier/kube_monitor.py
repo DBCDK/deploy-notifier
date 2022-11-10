@@ -13,7 +13,7 @@ import sys
 import typing
 
 import kubernetes
-import dbc_pyutils
+from dbc_pyutils import JSONFormatter
 import requests
 import slack
 
@@ -22,6 +22,7 @@ def setup_args():
     parser.add_argument("-c", "--kubeconfig")
     parser.add_argument("--slack-token", required=True)
     parser.add_argument("--slack-channel", required=True)
+    parser.add_argument("--artifactory-url", required=True)
     parser.add_argument("--artifactory-login", help="artifactory login in user:password format")
     parser.add_argument("namespace", nargs="+")
     return parser.parse_args()
@@ -29,7 +30,7 @@ def setup_args():
 def setup_logging():
     logger = logging.getLogger()
     handler = logging.StreamHandler()
-    handler.setFormatter(dbc_pyutils.JSONFormatter())
+    handler.setFormatter(JSONFormatter())
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     return logger
@@ -45,6 +46,7 @@ OWN_NAMESPACE = os.getenv("OWN_NAMESPACE", "default-namespace")
 class Kubernetes(object):
     def __init__(self, slack_info: SlackInfo,
             config_file: typing.Optional[str] = None,
+            artifactory_url: typing.Optional[str] = None,
             artifactory_login: typing.Optional[str] = None):
         if config_file is None:
             kubernetes.config.load_incluster_config()
@@ -59,7 +61,7 @@ class Kubernetes(object):
         else:
             self.slack_client = slack.WebClient(token=slack_info.token)
         self.artifactory_login = None
-        self.artifactory_url = "https://artifactory.dbc.dk/artifactory/docker-xp/deploy-monitor"
+        self.artifactory_url = artifactory_url
         if artifactory_login is not None:
             parts = artifactory_login.split(":")
             if len(parts) != 2:
@@ -130,7 +132,7 @@ class Kubernetes(object):
             self.artifactory_login.password), data=fp)
         if response.status_code != 201:
             logger.error("Error uploading events to artifactory: {} - {}",
-                r.status_code, r.reason)
+                response.status_code, response.reason)
 
 def notify_slack(slack_client, channel: str, text: str):
     slack_client.chat_postMessage(channel=channel, text=text)
@@ -138,7 +140,7 @@ def notify_slack(slack_client, channel: str, text: str):
 def main():
     args = setup_args()
     slack_info = SlackInfo(args.slack_token, args.slack_channel)
-    kube = Kubernetes(slack_info, args.kubeconfig, args.artifactory_login)
+    kube = Kubernetes(slack_info, args.kubeconfig, args.artifactory_url, args.artifactory_login)
     # multiprocessing doesn't work very well here because the kube object
     # cannot be shared between processes because of it's ssl connection
     # and having different kube objects for each process results in an error
