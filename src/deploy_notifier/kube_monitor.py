@@ -83,6 +83,7 @@ class Kubernetes(object):
         for event in watch.stream(self.apps.list_namespaced_deployment,
                 namespace, resource_version=resource_version):
             kube_object = event["object"]
+            logger.info(f"Watching {kube_object.metadata.name}")
             if kube_object.status is not None and kube_object.spec is not None \
                     and kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
@@ -99,6 +100,7 @@ class Kubernetes(object):
                 # repporting all the individual stages a dployment goes
                 # through when it's modified by a user.
                 if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
+                    logger.info(f"Skipping {name} with type {events[name].type}")
                     continue
                 events[name] = Event(event["type"], kube_object)
                 if self.artifactory_login is not None:
