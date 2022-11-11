@@ -83,7 +83,7 @@ class Kubernetes(object):
         for event in watch.stream(self.apps.list_namespaced_deployment,
                 namespace, resource_version=resource_version):
             kube_object = event["object"]
-            logger.info(f"Watching {kube_object.metadata.name}")
+            logger.info(f"Watching {kube_object.metadata.name} with status {kube_object.status}")
             if kube_object.status is not None and kube_object.spec is not None \
                     and kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
