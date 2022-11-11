@@ -88,8 +88,12 @@ class Kubernetes(object):
                     and kube_object.status.replicas == kube_object.spec.replicas:
                 name = kube_object.metadata.name
                 team = None
-                if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
-                    team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
+                logger.info(f"Found kube object with name {name} and {kube_object.spec.replicas} replicas")
+                try:
+                    if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
+                        team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
+                except Exception as err:
+                    logger.error(f"Error - {err}")
                 # the status object contains information on different
                 # update transitions and number of ready replicas, etc.,
                 # so it isn't used when comparing different deployment versions
