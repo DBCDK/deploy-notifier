@@ -93,7 +93,7 @@ class Kubernetes(object):
                     if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
                         team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
                 except Exception as err:
-                    logger.error(f"Error - {err}")
+                    logger.error(f"Error determining team - {err}")
                 # the status object contains information on different
                 # update transitions and number of ready replicas, etc.,
                 # so it isn't used when comparing different deployment versions
@@ -103,9 +103,12 @@ class Kubernetes(object):
                 # was observed for a particular deployment. This is to avoid
                 # repporting all the individual stages a dployment goes
                 # through when it's modified by a user.
-                if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
-                    logger.info(f"Skipping {name} with type {events[name].type}")
-                    continue
+                try:
+                    if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
+                        logger.info(f"Skipping {name} with type {events[name].type}")
+                        continue
+                except Exception as err:
+                    logger.error(f"Error determining relevance - {err}")
                 events[name] = Event(event["type"], kube_object)
                 if self.artifactory_login is not None:
                     self.upload_events_to_artifactory(namespace, events)
