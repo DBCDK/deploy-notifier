@@ -13,6 +13,7 @@ import sys
 import typing
 
 import kubernetes
+from kubernetes.client.exceptions import ApiException
 from dbc_pyutils import JSONFormatter
 import requests
 import slack
@@ -79,7 +80,14 @@ class Kubernetes(object):
         events = self.get_events_file_from_artifactory(namespace)
         watch = kubernetes.watch.Watch()
         items = self.apps.list_namespaced_deployment(namespace)
-        resource_version = items.metadata.resource_version
+        try:
+            resource_version = items.metadata.resource_version
+            logger.info(f"Resource version {resource_version}")
+        except ApiException as e:
+            if e.status == 410: # Resource too old
+                return self.watch_for_changes(namespace)
+            else:
+                raise
         for event in watch.stream(self.apps.list_namespaced_deployment,
                 namespace, resource_version=resource_version):
             kube_object = event["object"]
