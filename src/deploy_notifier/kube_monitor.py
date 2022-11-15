@@ -80,46 +80,46 @@ class Kubernetes(object):
         events = self.get_events_file_from_artifactory(namespace)
         watch = kubernetes.watch.Watch()
         items = self.apps.list_namespaced_deployment(namespace)
+        resource_version = items.metadata.resource_version
         try:
-            resource_version = items.metadata.resource_version
-            logger.info(f"Resource version {resource_version}")
+            for event in watch.stream(self.apps.list_namespaced_deployment,
+                    namespace, resource_version=resource_version):
+                kube_object = event["object"]
+                if kube_object.status is not None and kube_object.spec is not None \
+                        and kube_object.status.replicas == kube_object.spec.replicas:
+                    name = kube_object.metadata.name
+                    team = None
+                    logger.info(f"Found kube object with name {name} and {kube_object.spec.replicas} replicas")
+                    if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
+                        team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
+                    # the status object contains information on different
+                    # update transitions and number of ready replicas, etc.,
+                    # so it isn't used when comparing different deployment versions
+                    kube_object.status = None
+                    kube_object.metadata = None
+                    # This condition checks how long it has been since a change
+                    # was observed for a particular deployment. This is to avoid
+                    # repporting all the individual stages a dployment goes
+                    # through when it's modified by a user.
+                    if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
+                        logger.info(f"Skipping {name} with type {events[name].type}")
+                        continue
+                    events[name] = Event(event["type"], kube_object)
+                    if self.artifactory_login is not None:
+                        self.upload_events_to_artifactory(namespace, events)
+                    action = "deployed to" if event["type"] != "DELETED" else "deleted from"
+                    image = kube_object.spec.template.spec.containers[0].image
+                    msg = f"{name} {action} {namespace}\nImage: {image}"
+                    if team is not None:
+                        msg = f"{msg}\nTeam: {team}"
+                    logger.info(msg)
+                    notify_slack(self.slack_client, self.slack_info.channel, msg)
         except ApiException as e:
             if e.status == 410: # Resource too old
+                logger.info(f"An error happened: {e} - Restarting watch.")
                 return self.watch_for_changes(namespace)
             else:
                 raise
-        for event in watch.stream(self.apps.list_namespaced_deployment,
-                namespace, resource_version=resource_version):
-            kube_object = event["object"]
-            if kube_object.status is not None and kube_object.spec is not None \
-                    and kube_object.status.replicas == kube_object.spec.replicas:
-                name = kube_object.metadata.name
-                team = None
-                logger.info(f"Found kube object with name {name} and {kube_object.spec.replicas} replicas")
-                if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
-                    team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
-                # the status object contains information on different
-                # update transitions and number of ready replicas, etc.,
-                # so it isn't used when comparing different deployment versions
-                kube_object.status = None
-                kube_object.metadata = None
-                # This condition checks how long it has been since a change
-                # was observed for a particular deployment. This is to avoid
-                # repporting all the individual stages a dployment goes
-                # through when it's modified by a user.
-                if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
-                    logger.info(f"Skipping {name} with type {events[name].type}")
-                    continue
-                events[name] = Event(event["type"], kube_object)
-                if self.artifactory_login is not None:
-                    self.upload_events_to_artifactory(namespace, events)
-                action = "deployed to" if event["type"] != "DELETED" else "deleted from"
-                image = kube_object.spec.template.spec.containers[0].image
-                msg = f"{name} {action} {namespace}\nImage: {image}"
-                if team is not None:
-                    msg = f"{msg}\nTeam: {team}"
-                logger.info(msg)
-                notify_slack(self.slack_client, self.slack_info.channel, msg)
 
     def get_events_file_from_artifactory(self, namespace: str) -> dict:
         if self.artifactory_login is not None:
