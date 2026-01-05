@@ -14,6 +14,7 @@ import typing
 
 import kubernetes
 from kubernetes.client.exceptions import ApiException
+from kubernetes.client import Configuration
 from dbc_pyutils import JSONFormatter
 import requests
 import slack
@@ -53,6 +54,13 @@ class Kubernetes(object):
             kubernetes.config.load_incluster_config()
         else:
             kubernetes.config.load_kube_config(config_file=config_file)
+
+        # 🔴 IMPORTANT: disable proxy for Kubernetes client, so internal kubernetes calls are not sent through proxy
+        cfg = Configuration.get_default_copy()
+        cfg.proxy = None
+        cfg.proxy_headers = None
+        Configuration.set_default(cfg)
+
         self.apps = kubernetes.client.AppsV1Api()
         self.slack_info = slack_info
         # slack only supports http proxies
