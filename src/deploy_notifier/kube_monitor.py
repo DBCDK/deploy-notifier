@@ -55,7 +55,7 @@ class Kubernetes(object):
         else:
             kubernetes.config.load_kube_config(config_file=config_file)
 
-        # 🔴 IMPORTANT: disable proxy for Kubernetes client, so internal kubernetes calls are not sent through proxy
+        # IMPORTANT: disable proxy for Kubernetes client, so internal kubernetes calls are not sent through proxy
         cfg = Configuration.get_default_copy()
         cfg.proxy = None
         cfg.proxy_headers = None
