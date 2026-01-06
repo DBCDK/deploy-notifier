@@ -1,8 +1,14 @@
 #! groovy
 
 def workerNode = "xp-build-i01"
+def slackReceivers = "#ai-jenkins-warnings"
+
+@Library('ai') _
 
 pipeline {
+	options {
+		disableConcurrentBuilds()
+	}
 	agent { label workerNode }
 	environment {
 		ARTIFACTORY_LOGIN = credentials("artifactory_login")
@@ -74,7 +80,7 @@ pipeline {
 				}
 			}
 		}
-		stage("update staging version number") {
+		stage("update mi-staging version number") {
 			agent {
 				docker {
 					label workerNode
@@ -90,7 +96,17 @@ pipeline {
 				build job: "ai/deploy-notifier/deploy-notifier-deploy/staging", wait: true
 			}
 		}
-		stage("update prod version number") {
+		stage("set gitops variables for ai-staging") {
+			when {
+				branch "master"
+			}
+			steps {
+				script {
+					setGitopsVersion("ai-staging", "DEPLOY_NOTIFIER_1_0_VERSION", "${env.DOCKER_TAG}")
+				}
+			}
+		}
+		stage("update mi-prod version number") {
 			agent {
 				docker {
 					label workerNode
@@ -106,6 +122,23 @@ pipeline {
 				build job: "ai/deploy-notifier/deploy-notifier-deploy/prod", wait: true
 			}
 		}
-
+		stage("set gitops variables for ai-prod") {
+			when {
+				branch "master"
+			}
+			steps {
+				script {
+					setGitopsVersion("ai-prod", "DEPLOY_NOTIFIER_1_0_VERSION", "${env.DOCKER_TAG}")
+				}
+			}
+		}
+	}
+	post {
+		unstable {
+			slackSend message: "build became unstable for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: slackReceivers
+		}
+		failure {
+			slackSend message: "build failed for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: slackReceivers
+		}
 	}
 }
