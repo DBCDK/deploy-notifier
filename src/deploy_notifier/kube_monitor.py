@@ -51,17 +51,28 @@ class Kubernetes(object):
             artifactory_url: typing.Optional[str] = None,
             artifactory_login: typing.Optional[str] = None):
         if config_file is None:
-            kubernetes.config.load_incluster_config()
+            # Remove proxy env vars before initialising the kubernetes client so
+            # in-cluster API calls are never routed through the corporate proxy.
+            # Restored afterwards so Artifactory/Slack calls still use the proxy.
+            _proxy_vars = {k: os.environ.pop(k) for k in
+                ('http_proxy', 'HTTP_PROXY', 'https_proxy', 'HTTPS_PROXY',
+                 'all_proxy', 'ALL_PROXY')
+                if k in os.environ}
+            try:
+                cfg = Configuration()
+                kubernetes.config.load_incluster_config(client_configuration=cfg)
+                api_client = kubernetes.client.ApiClient(configuration=cfg)
+            finally:
+                os.environ.update(_proxy_vars)
+            self._token_file = '/var/run/secrets/kubernetes.io/serviceaccount/token'
         else:
             kubernetes.config.load_kube_config(config_file=config_file)
+            api_client = kubernetes.client.ApiClient(
+                configuration=Configuration.get_default_copy())
+            self._token_file = None
 
-        # IMPORTANT: disable proxy for Kubernetes client, so internal kubernetes calls are not sent through proxy
-        cfg = Configuration.get_default_copy()
-        cfg.proxy = None
-        cfg.proxy_headers = None
-        Configuration.set_default(cfg)
-
-        self.apps = kubernetes.client.AppsV1Api()
+        self._api_client = api_client
+        self.apps = kubernetes.client.AppsV1Api(api_client=api_client)
         self.slack_info = slack_info
         # slack only supports http proxies
         if os.getenv("http_proxy") is not None:
@@ -80,10 +91,16 @@ class Kubernetes(object):
             else:
                 self.artifactory_login = ArtifactoryLogin(parts[0], parts[1])
 
+    def _refresh_token(self):
+        if self._token_file:
+            with open(self._token_file) as f:
+                self._api_client.default_headers['Authorization'] = 'Bearer ' + f.read().strip()
+
     def watch_for_changes(self, namespace: str):
         self.watch_for_deployment_changes(namespace)
 
     def watch_for_deployment_changes(self, namespace: str, wait: int = 5):
+        self._refresh_token()
         logger.info("Watching namespace {}".format(namespace))
         events = self.get_events_file_from_artifactory(namespace)
         watch = kubernetes.watch.Watch()
@@ -123,7 +140,7 @@ class Kubernetes(object):
                     logger.info(msg)
                     notify_slack(self.slack_client, self.slack_info.channel, msg)
         except ApiException as e:
-            if e.status == 410: # Resource too old
+            if e.status in (410, 401):
                 logger.info(f"An error happened: {e} - Restarting watch.")
                 return self.watch_for_changes(namespace)
             else:
