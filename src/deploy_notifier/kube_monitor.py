@@ -5,10 +5,9 @@
 import argparse
 import collections
 import concurrent.futures
-import io
+import json
 import logging
 import os
-import pickle
 import sys
 import typing
 
@@ -44,6 +43,33 @@ Event = collections.namedtuple("Event", ["type", "object"])
 ArtifactoryLogin = collections.namedtuple("ArtifactoryLogin", ["user", "password"])
 
 OWN_NAMESPACE = os.getenv("OWN_NAMESPACE", "default-namespace")
+EVENTS_CACHE_VERSION = 2
+
+def get_events_filename(namespace: str) -> str:
+    return f"deployment-events-v{EVENTS_CACHE_VERSION}-{OWN_NAMESPACE}-{namespace}.json"
+
+def snapshot_deployment(kube_object) -> dict:
+    snapshot = kube_object.to_dict()
+    # Ignore fields that change as part of Kubernetes reconciliation and watch progress.
+    snapshot["metadata"] = None
+    snapshot["status"] = None
+    return snapshot
+
+def serialize_events(events: dict) -> str:
+    payload = {"events": {}}
+    for name, event in events.items():
+        payload["events"][name] = {"type": event.type, "object": event.object}
+    return json.dumps(payload, sort_keys=True)
+
+def deserialize_events(payload: str) -> dict:
+    data = json.loads(payload)
+    events = {}
+    for name, event in data.get("events", {}).items():
+        if "type" not in event or "object" not in event:
+            logger.warning("Skipping malformed cached event for %s", name)
+            continue
+        events[name] = Event(event["type"], event["object"])
+    return events
 
 class Kubernetes(object):
     def __init__(self, slack_info: SlackInfo,
@@ -100,19 +126,15 @@ class Kubernetes(object):
                     logger.info(f"Found kube object with name {name} and {kube_object.spec.replicas} replicas")
                     if "app.dbc.dk/team" in kube_object.spec.template.metadata.labels:
                         team = kube_object.spec.template.metadata.labels["app.dbc.dk/team"]
-                    # the status object contains information on different
-                    # update transitions and number of ready replicas, etc.,
-                    # so it isn't used when comparing different deployment versions
-                    kube_object.status = None
-                    kube_object.metadata = None
+                    deployment_snapshot = snapshot_deployment(kube_object)
                     # This condition checks how long it has been since a change
                     # was observed for a particular deployment. This is to avoid
                     # repporting all the individual stages a dployment goes
                     # through when it's modified by a user.
-                    if name in events and (events[name].type == event["type"] and events[name].object == kube_object):
+                    if name in events and (events[name].type == event["type"] and events[name].object == deployment_snapshot):
                         logger.info(f"Skipping {name} with type {events[name].type}")
                         continue
-                    events[name] = Event(event["type"], kube_object)
+                    events[name] = Event(event["type"], deployment_snapshot)
                     if self.artifactory_login is not None:
                         self.upload_events_to_artifactory(namespace, events)
                     action = "deployed to" if event["type"] != "DELETED" else "deleted from"
@@ -132,22 +154,25 @@ class Kubernetes(object):
     def get_events_file_from_artifactory(self, namespace: str) -> dict:
         if self.artifactory_login is not None:
             logger.info("getting events from artifactory")
-            filename = f"deployment-events-{OWN_NAMESPACE}-{namespace}.pickle"
+            filename = get_events_filename(namespace)
             url = f"{self.artifactory_url}/{filename}"
             response = requests.get(url, auth=(self.artifactory_login.user,
                 self.artifactory_login.password))
             if response.status_code == 200:
-                return pickle.load(io.BytesIO(response.content))
+                try:
+                    return deserialize_events(response.text)
+                except (TypeError, ValueError) as error:
+                    logger.warning("Ignoring invalid cached deployment events for %s: %s",
+                        namespace, error)
         return {}
 
     def upload_events_to_artifactory(self, namespace: str, events: dict) -> None:
-        filename = f"deployment-events-{OWN_NAMESPACE}-{namespace}.pickle"
+        filename = get_events_filename(namespace)
         url = f"{self.artifactory_url}/{filename}"
-        fp = io.BytesIO()
-        pickle.dump(events, fp)
-        fp.seek(0)
+        payload = serialize_events(events)
         response = requests.put(url, auth=(self.artifactory_login.user,
-            self.artifactory_login.password), data=fp)
+            self.artifactory_login.password), data=payload,
+            headers={"Content-Type": "application/json"})
         if response.status_code != 201:
             logger.error("Error uploading events to artifactory: {} - {}",
                 response.status_code, response.reason)
