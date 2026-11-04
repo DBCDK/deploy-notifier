@@ -49,7 +49,7 @@ pipeline {
 				}
 			}
 			when {
-				branch "master"
+				branch "main"
 			}
 			steps {
 				// unstash "build-stash"
@@ -80,25 +80,9 @@ pipeline {
 				}
 			}
 		}
-		stage("update mi-staging version number") {
-			agent {
-				docker {
-					label workerNode
-					image "docker-dbc.artifacts.dbccloud.dk/build-env"
-					alwaysPull true
-				}
-			}
-			when {
-				branch "master"
-			}
-			steps {
-				sh "set-new-version deploy-notifier-1-0.yml ${env.GITLAB_PRIVATE_TOKEN} ai/deploy-notifier-secrets ${env.DOCKER_TAG} -b staging"
-				build job: "ai/deploy-notifier/deploy-notifier-deploy/staging", wait: true
-			}
-		}
 		stage("set gitops variables for ai-staging") {
 			when {
-				branch "master"
+				branch "main"
 			}
 			steps {
 				script {
@@ -106,25 +90,9 @@ pipeline {
 				}
 			}
 		}
-		stage("update mi-prod version number") {
-			agent {
-				docker {
-					label workerNode
-					image "docker-dbc.artifacts.dbccloud.dk/build-env"
-					alwaysPull true
-				}
-			}
-			when {
-				branch "master"
-			}
-			steps {
-				sh "set-new-version deploy-notifier-1-0.yml ${env.GITLAB_PRIVATE_TOKEN} ai/deploy-notifier-secrets ${env.DOCKER_TAG} -b prod"
-				build job: "ai/deploy-notifier/deploy-notifier-deploy/prod", wait: true
-			}
-		}
 		stage("set gitops variables for ai-prod") {
 			when {
-				branch "master"
+				branch "main"
 			}
 			steps {
 				script {
