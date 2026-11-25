@@ -15,7 +15,7 @@ dependencies = [
     "dbc-pyutils",
     "kubernetes",
     "requests",
-    "slackclient",
+    "slack-sdk",
 ]
 
 [project.scripts]

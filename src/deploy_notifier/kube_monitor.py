@@ -16,7 +16,7 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.client import Configuration
 from dbc_pyutils import JSONFormatter
 import requests
-import slack
+from slack_sdk import WebClient
 
 def setup_args():
     parser = argparse.ArgumentParser()
@@ -76,6 +76,7 @@ class Kubernetes(object):
             config_file: typing.Optional[str] = None,
             artifactory_url: typing.Optional[str] = None,
             artifactory_login: typing.Optional[str] = None):
+        """Initialize the Kubernetes and Slack API clients."""
         if config_file is None:
             kubernetes.config.load_incluster_config()
         else:
@@ -91,10 +92,10 @@ class Kubernetes(object):
         self.slack_info = slack_info
         # slack only supports http proxies
         if os.getenv("http_proxy") is not None:
-            self.slack_client = slack.WebClient(token=slack_info.token,
+            self.slack_client = WebClient(token=slack_info.token,
                 proxy=os.getenv("http_proxy"))
         else:
-            self.slack_client = slack.WebClient(token=slack_info.token)
+            self.slack_client = WebClient(token=slack_info.token)
         self.artifactory_login = None
         self.artifactory_url = artifactory_url
         if artifactory_login is not None:
