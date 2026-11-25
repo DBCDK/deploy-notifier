@@ -12,14 +12,29 @@ RUN useradd -m python
 USER python
 WORKDIR /home/python
 
-ENV PATH=/home/python/.local/bin:$PATH
+# uv: precompile .pyc, copy (not hardlink) into the venv, no cache in the image,
+# and use the base image python
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_PYTHON_DOWNLOADS=never
 
-COPY --chown=python setup.py setup.py
+# Copy project metadata and lock file
+COPY --chown=python pyproject.toml uv.lock ./
+
+# Install dependencies only (not the local package) so this layer is cached.
+RUN uv sync --locked --no-dev --no-install-project
+
+# Copy source last so dependency layer is reused on source-only changes
 COPY --chown=python src src
-COPY --chown=python docker/start.sh start.sh
 
-RUN pip install --user pip && \
-    pip install --user .
+# Install the local package now that source is present
+RUN uv sync --locked --no-dev --no-editable
+
+# Ensure the venv is first in PATH
+ENV PATH="/home/python/.venv/bin:${PATH}"
+
+COPY --chown=python docker/start.sh start.sh
 
 CMD ["./start.sh"]
 
