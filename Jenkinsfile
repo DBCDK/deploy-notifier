@@ -1,7 +1,6 @@
 #! groovy
 
 def workerNode = "xp-build-i01"
-def slackReceivers = "#ai-jenkins-warnings"
 
 @Library('ai') _
 
@@ -14,6 +13,8 @@ pipeline {
 		ARTIFACTORY_LOGIN = credentials("artifactory_login")
 		DOCKER_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
 		GITLAB_PRIVATE_TOKEN = credentials("ai-gitlab-api-token")
+		SLACK_CHANNEL = "${env.BRANCH_NAME == 'main' ? '#ai-jenkins-warnings' : '#ai-jenkins-warnings-debug'}"
+		PACKAGE="deploy-notifier"
 	}
     triggers {
 	upstream(upstreamProjects: 'Docker-base-python3,Docker-base-python3-bump-trigger', threshold: hudson.model.Result.SUCCESS)
@@ -28,56 +29,12 @@ pipeline {
 				}
 			}
 			steps {
-				sh """#!/usr/bin/env bash
-					set -xe
-					rm -rf env
-					python3 -m venv env
-					source env/bin/activate
-					pip install --upgrade pip
-					pip install pytest-cov
-					pip install .
-					make-build-info
-				"""
+				uvtest()
 			}
 		}
-		stage("upload wheel package") {
-			agent {
-				docker {
-					label workerNode
-					image "docker-dbc.artifacts.dbccloud.dk/build-env"
-					alwaysPull true
-				}
-			}
-			when {
-				branch "main"
-			}
+		stage("docker build") {
 			steps {
-				// unstash "build-stash"
-				sh """#!/usr/bin/env bash
-					set -xe
-					rm -rf dist
-					make-build-info
-					python3 setup.py egg_info --tag-build=${env.BUILD_NUMBER} bdist_wheel
-					twine upload -u $ARTIFACTORY_LOGIN_USR -p $ARTIFACTORY_LOGIN_PSW --repository-url https://artifactory.dbc.dk/artifactory/api/pypi/pypi-dbc dist/*
-				"""
-			}
-		}
-		stage('build'){
-			steps {
-				script {
-					def tag = 'deploy-notifier'
-					app = docker.build("$tag:${DOCKER_TAG}", "--pull --no-cache --build-arg BRANCH_NAME=${BRANCH_NAME} .")
-				}
-			}
-		}
-		stage('push') {
-			steps {
-				script {
-					docker.withRegistry('https://docker-ai.artifacts.dbccloud.dk', 'docker') {
-						app.push()
-						app.push('latest')
-					}
-				}
+                		buildImage()
 			}
 		}
 		stage("set gitops variables for ai-staging") {
@@ -103,10 +60,10 @@ pipeline {
 	}
 	post {
 		unstable {
-			slackSend message: "build became unstable for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: slackReceivers
+			slackSend message: "build became unstable for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: env.SLACK_CHANNEL
 		}
 		failure {
-			slackSend message: "build failed for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: slackReceivers
+			slackSend message: "build failed for ${env.JOB_NAME}: ${env.BUILD_URL}", channel: env.SLACK_CHANNEL
 		}
 	}
 }

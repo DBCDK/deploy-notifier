@@ -1,5 +1,8 @@
 *.egg-info/
 *.pyc
 *.swp
+.venv/
+build/
+dist/
 .idea
 .devcontainer

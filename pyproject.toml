@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deploy-notifier"
+version = "0.1.0"
+description = "Bot which notifies of new deployments"
+readme = "README.md"
+requires-python = ">=3.9"
+maintainers = [
+    { name = "ai", email = "ai@dbc.dk" },
+]
+dependencies = [
+    "dbc-pyutils",
+    "kubernetes",
+    "requests",
+    "slack-sdk",
+]
+
+[project.scripts]
+kube-monitor = "deploy_notifier.kube_monitor:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[[tool.uv.index]]
+name = "dbc-devpi"
+url = "https://devpi.dbccloud.dk/dbc/packages/+simple/"
+publish-url = "https://devpi.dbccloud.dk/dbc/packages"
