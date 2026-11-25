@@ -31,30 +31,6 @@ pipeline {
 				uvtest()
 			}
 		}
-		stage("upload wheel package") {
-			agent {
-				docker {
-					label workerNode
-					image "docker-dbc.artifacts.dbccloud.dk/build-env"
-					alwaysPull true
-				}
-			}
-			when {
-				branch "main"
-			}
-			steps {
-				// unstash "build-stash"
-				sh '''#!/usr/bin/env bash
-					set -xe
-					rm -rf dist
-					make-build-info
-					version="$(uv version --short)"
-					uv version "${version}.post${BUILD_NUMBER}" --frozen
-					uv build --wheel
-					twine upload -u "$ARTIFACTORY_LOGIN_USR" -p "$ARTIFACTORY_LOGIN_PSW" --repository-url https://artifactory.dbc.dk/artifactory/api/pypi/pypi-dbc dist/*
-				'''
-			}
-		}
 		stage('build'){
 			steps {
 				script {
