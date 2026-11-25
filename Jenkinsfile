@@ -32,22 +32,9 @@ pipeline {
 				uvtest()
 			}
 		}
-		stage('build'){
+		stage("docker build") {
 			steps {
-				script {
-					def tag = 'deploy-notifier'
-					app = docker.build("$tag:${DOCKER_TAG}", "--pull --no-cache --build-arg BRANCH_NAME=${BRANCH_NAME} .")
-				}
-			}
-		}
-		stage('push') {
-			steps {
-				script {
-					docker.withRegistry('https://docker-ai.artifacts.dbccloud.dk', 'docker') {
-						app.push()
-						app.push('latest')
-					}
-				}
+                		buildImage()
 			}
 		}
 		stage("set gitops variables for ai-staging") {
